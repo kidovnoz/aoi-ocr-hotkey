@@ -22,3 +22,6 @@ Một công cụ hỗ trợ OCR (Optical Character Recognition) cho hệ thống
 ```bash
 git clone https://github.com/kidovnoz/aoi-ocr-hotkey.git
 cd aoi-ocr-hotkey
+
+'''bash
+python ocr_hotkey.py
