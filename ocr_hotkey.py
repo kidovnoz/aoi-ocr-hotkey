@@ -1,20 +1,21 @@
 import keyboard
 import pyautogui
 from PIL import ImageGrab, ImageDraw, Image
-import pytesseract
 import time
 from datetime import datetime
 import threading
 import json
 import os
+import easyocr
 import numpy as np
 import csv
+import cv2
+
+# Khởi tạo EasyOCR reader
+reader = easyocr.Reader(['en'], gpu=False, verbose=False, download_enabled=False)
 
 REGIONS_FILE = "ocr_regions.json"
 regions = []
-
-# Nếu cần, chỉ định Tesseract path:
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 if os.path.exists(REGIONS_FILE):
     with open(REGIONS_FILE, 'r') as f:
@@ -41,18 +42,17 @@ def run_ocr_all():
         print(f"🕒 Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"🖼️ Vùng {i} [{x1}, {y1}, {x2}, {y2}]:")
         cropped_img = img_np[y1:y2, x1:x2]
+        results = reader.readtext(cropped_img)
 
-        # Chuyển sang PIL Image RGB (cho pytesseract)
-        pil_img = Image.fromarray(cropped_img).convert('RGB')
-        text = pytesseract.image_to_string(pil_img, lang='eng').strip()
-
-        if not text:
+        if not results:
             print("📭 Không nhận diện được văn bản.")
         else:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            print(f"🔤 {text}")
-            # log_to_csv(timestamp, i, region, text, 1.0)
-            ocr_results.append((i, region, text, timestamp))
+            for (_, text, conf) in results:
+                print(f"🔤 {text} (⏱ {conf:.2f})")
+                if conf > 0.5:
+                    log_to_csv(timestamp, i, region, text, conf)
+                    ocr_results.append((i, region, text, timestamp))
 
         print("-" * 60)
     return ocr_results
@@ -106,8 +106,6 @@ def show_all_regions():
         draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
         draw.text((x1 + 5, y1 + 5), f"V{i}", fill="yellow")
     screenshot.show()
-    # screenshot.save("temp_regions.png")
-    # os.startfile("temp_regions.png")
 
 def clear_all_regions():
     global regions
@@ -120,30 +118,49 @@ def clear_all_regions():
     else:
         print("❎ Đã huỷ thao tác.")
 
-# def log_to_csv(timestamp, region_id, coords, text, conf):
-#     file_exists = os.path.isfile("ocr_log.csv")
-#     with open("ocr_log.csv", mode='a', newline='', encoding='utf-8') as file:
-#         writer = csv.writer(file)
-#         if not file_exists:
-#             writer.writerow(["Thời gian", "No", "Tọa độ X", "Tọa độ Y", "Văn bản"])
-#         x, y = coords[0], coords[1]  # Góc trên trái
-#         writer.writerow([timestamp, region_id, x, y, text])
+def log_to_csv(timestamp, region_id, coords, text, conf):
+    file_exists = os.path.isfile("ocr_log.csv")
+    with open("ocr_log.csv", mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["Thời gian", "Vùng", "Tọa độ", "Văn bản", "Độ tin cậy"])
+        writer.writerow([timestamp, f"Vùng {region_id}", coords, text, f"{conf:.2f}"])
 
+def save_regions_as_images(ocr_results):
+    if not ocr_results:
+        print("⚠️ Không có kết quả OCR để lưu ảnh!")
+        return
 
-print("\n======================= OCR TOOL (Tesseract) =======================")
+    folder = "captured_images"
+    os.makedirs(folder, exist_ok=True)
+    full_screenshot = ImageGrab.grab()
+
+    for region_id, region, text_ocr, timestamp in ocr_results:
+        x1, y1, x2, y2 = region
+        if x2 <= x1 or y2 <= y1:
+            print(f"⚠️ Bỏ qua vùng lỗi: {region}")
+            continue
+        cropped_img = full_screenshot.crop((x1, y1, x2, y2))
+        safe_text = ''.join(c for c in text_ocr.strip().replace(" ", "_") if c.isalnum() or c in ('_', '-'))
+        filename = f"{folder}/region_{region_id}_{safe_text}_{timestamp.replace(':', '-')}.png"
+        cropped_img.save(filename, optimize=True, quality=85)
+        print(f"💾 Đã lưu ảnh vùng {region_id} tại: {filename}")
+
+print("\n======================= OCR TOOL =======================")
 print("🟢 F2: Quét toàn bộ vùng OCR")
 print("🔵 F3: Xem tọa độ chuột")
 print("🟡 F4: Đánh dấu 2 điểm tạo vùng OCR")
 print("🟣 F5: Hiển thị các vùng OCR")
 print("🟠 F6: Xoá toàn bộ vùng OCR")
 print("🔴 ESC: Thoát chương trình")
-print("====================================================================")
+print("========================================================")
 
 while True:
     if keyboard.is_pressed('f2'):
         ocr_results = run_ocr_all()
         if ocr_results:
             print("🖼️ Đã quét xong các vùng OCR.")
+            save_regions_as_images(ocr_results)
         else:
             print("⚠️ Không có văn bản nào được nhận diện.")
         time.sleep(0.5)
