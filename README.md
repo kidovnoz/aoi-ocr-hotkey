@@ -16,7 +16,8 @@ Một công cụ hỗ trợ OCR (Optical Character Recognition) cho hệ thống
 - Đã cài đặt Tesseract OCR
 
 ## 📦 Cài đặt
-
+Tải file exe Tesseract v5.5.0
+https://sourceforge.net/projects/tesseract-ocr.mirror/files/5.5.0/tesseract-ocr-w64-setup-5.5.0.20241111.exe/download
 1. Clone repo:
 
 ```bash
